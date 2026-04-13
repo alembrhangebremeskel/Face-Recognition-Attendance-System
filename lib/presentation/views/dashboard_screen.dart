@@ -6,6 +6,62 @@ import 'attendance_history_screen.dart';
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
+  /// --- THE LOGOUT LOGIC WITH SUCCESS MESSAGE ---
+  void _handleLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // User must choose an option
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Row(
+          children: [
+            Icon(Icons.logout_rounded, color: Color(0xFF263238)),
+            SizedBox(width: 10),
+            Text("Logout"),
+          ],
+        ),
+        content: const Text(
+          "Are you sure you want to log out? You will return to the Main Dashboard.",
+          style: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade800,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx); // Close the dialog
+
+              // SUCCESS FEEDBACK
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Successfully logged out!"),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+
+              // UPDATED: SECURITY NAVIGATION
+              // This returns you back to the DashboardScreen itself and clears the history
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const DashboardScreen()),
+                (route) => false,
+              );
+            },
+            child: const Text("LOGOUT", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -74,7 +130,19 @@ class DashboardScreen extends StatelessWidget {
                   destination: const AttendanceHistoryScreen(),
                 ),
                 
-                // Extra padding at the bottom to ensure the last button isn't cramped
+                // --- LOGOUT BUTTON POSITIONED BELOW HISTORY ---
+                const SizedBox(height: 20),
+                _buildMenuButton(
+                  context,
+                  title: "Logout",
+                  subtitle: "Exit the session securely",
+                  icon: Icons.power_settings_new_rounded,
+                  color: Colors.red.shade700,
+                  isLogout: true, // Special flag for logout logic
+                  destination: const SizedBox(), 
+                ),
+                
+                // Extra padding at the bottom
                 const SizedBox(height: 20),
               ],
             ),
@@ -91,14 +159,21 @@ class DashboardScreen extends StatelessWidget {
     required IconData icon,
     required Color color,
     required Widget destination,
+    bool isLogout = false, // New optional parameter
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => destination),
-        ),
+        onTap: () {
+          if (isLogout) {
+            _handleLogout(context);
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => destination),
+            );
+          }
+        },
         borderRadius: BorderRadius.circular(15),
         child: Ink(
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),

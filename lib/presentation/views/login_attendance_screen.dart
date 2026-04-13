@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 // IMPORTANT: Replace 'attendance_app' with the 'name' from your pubspec.yaml file
-// This is the most reliable way to fix the "path not specified" error.
 import 'package:attendance_app/presentation/viewmodels/attendance_viewmodel.dart';
 import 'camera_screen.dart'; 
 
@@ -16,7 +15,6 @@ class LoginAttendanceScreen extends StatefulWidget {
 class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
   final _idController = TextEditingController();
   final _passController = TextEditingController();
-  bool _isVerifying = false; 
 
   @override
   void dispose() {
@@ -36,17 +34,14 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
       return;
     }
 
-    setState(() => _isVerifying = true);
-
     try {
       // Accessing the ViewModel via Provider
       final viewModel = context.read<AttendanceViewModel>();
       
+      // The ViewModel now handles the 'isLoading' state internally
       bool isAuthorized = await viewModel.verifyCredentials(id, pass);
 
       if (mounted) {
-        setState(() => _isVerifying = false);
-
         if (isAuthorized) {
           // Success: Navigate to Face Scan
           Navigator.push(
@@ -56,13 +51,14 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
             ),
           );
         } else {
-          // Failure: Show the Security Alert
+          // Failure: Show the Security Alert using the error from ViewModel
           _showSecurityAlertDialog(viewModel.errorMessage);
         }
       }
     } catch (e) {
-      if (mounted) setState(() => _isVerifying = false);
-      _showSecurityAlertDialog("Initialization Error: Check if AttendanceViewModel is provided in main.dart");
+      if (mounted) {
+        _showSecurityAlertDialog("System Error: ${e.toString()}");
+      }
     }
   }
 
@@ -100,6 +96,9 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch the viewModel for changes in 'isLoading'
+    final viewModel = context.watch<AttendanceViewModel>();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Verify Identity"), 
@@ -135,6 +134,7 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
             /// ID Input
             TextField(
               controller: _idController, 
+              enabled: !viewModel.isLoading, // Disable input while loading
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.badge_outlined, color: Color(0xFF00796B)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), 
@@ -151,6 +151,7 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
             TextField(
               controller: _passController, 
               obscureText: true,
+              enabled: !viewModel.isLoading, // Disable input while loading
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.lock_person_outlined, color: Color(0xFF00796B)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), 
@@ -174,9 +175,17 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 2,
                 ),
-                onPressed: _isVerifying ? null : _handleVerification,
-                child: _isVerifying 
-                  ? const CircularProgressIndicator(color: Colors.white)
+                // Button is disabled if isLoading is true
+                onPressed: viewModel.isLoading ? null : _handleVerification,
+                child: viewModel.isLoading 
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white, 
+                        strokeWidth: 3,
+                      ),
+                    )
                   : const Text(
                       "PROCEED TO FACE SCAN", 
                       style: TextStyle(
