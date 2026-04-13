@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:math'; // Required for sqrt and pow
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../data/database/database_helper.dart';
@@ -15,7 +17,6 @@ class AttendanceViewModel extends ChangeNotifier {
     loadAttendance();
   }
 
-  /// Loads all attendance logs from the database
   Future<void> loadAttendance() async {
     try {
       final data = await DatabaseHelper.instance.getAllAttendance();
@@ -27,13 +28,9 @@ class AttendanceViewModel extends ChangeNotifier {
   }
 
   /// --- THE GATEKEEPER: PASSWORD VERIFICATION ---
-  /// This method is called in the UI before navigating to the camera.
-  /// It returns true only if the ID and Password match a registered student.
   Future<bool> verifyCredentials(String studentId, String password) async {
     try {
       _errorMessage = "";
-      
-      // Strict check against the 'students' table in SQLite
       bool isValid = await DatabaseHelper.instance.verifyPassword(studentId, password);
       
       if (!isValid) {
@@ -41,8 +38,7 @@ class AttendanceViewModel extends ChangeNotifier {
         notifyListeners();
         return false;
       }
-      
-      return true; // Match found!
+      return true;
     } catch (e) {
       _errorMessage = "Verification System Error: ${e.toString()}";
       notifyListeners();
@@ -50,23 +46,53 @@ class AttendanceViewModel extends ChangeNotifier {
     }
   }
 
-  /// Face Recognition Entry Point
-  /// Called after successful ID/Password login
+  /// --- STEP 3: TRUE FACE RECOGNITION LOGIC ---
+  /// This compares the live embedding against the registered one in SQLite.
   Future<bool> verifyFaceAndMarkAttendance({
-    required String name, 
     required String studentId,
+    required List<double> liveEmbedding, // The numbers from the camera
   }) async {
     try {
       _errorMessage = ""; 
       
-      // Small delay to simulate processing for better UX
-      await Future.delayed(const Duration(milliseconds: 500));
+      // 1. Fetch registered student data (which contains their saved face_data)
+      final studentData = await DatabaseHelper.instance.getStudentForVerification(studentId);
+      
+      if (studentData == null) {
+        _errorMessage = "Security Alert: ID $studentId not found in records.";
+        notifyListeners();
+        return false;
+      }
 
-      // Proceed to save the record
-      return await markAttendance(name, studentId);
+      // 2. Extract and decode the registered embedding
+      // face_data is stored as a JSON string in SQLite
+      List<double> registeredEmbedding = List<double>.from(
+        jsonDecode(studentData['face_data'])
+      );
+
+      // 3. MATH: Calculate Euclidean Distance
+      double distance = 0;
+      for (int i = 0; i < liveEmbedding.length; i++) {
+        distance += pow((liveEmbedding[i] - registeredEmbedding[i]), 2);
+      }
+      distance = sqrt(distance);
+
+      debugPrint("Final Face Distance for $studentId: $distance");
+
+      // 4. THE SECURITY THRESHOLD
+      // 0.6 is the standard threshold. Lower is more secure.
+      if (distance < 0.6) {
+        // MATCH FOUND: Proceed to save attendance
+        return await markAttendance(studentData['name'], studentId);
+      } else {
+        // SECURITY ALERT: The error message you requested
+        _errorMessage = "Security Alert: Scanned face does not match the registered profile! Access Denied.";
+        notifyListeners();
+        return false;
+      }
       
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = "Recognition Error: ${e.toString()}";
       notifyListeners();
       return false;
     }
@@ -77,58 +103,48 @@ class AttendanceViewModel extends ChangeNotifier {
     try {
       _errorMessage = "";
 
-      // 1. Fetch the official student data from DB (Security check)
-      final studentData = await DatabaseHelper.instance.getStudentForVerification(studentId);
-      
-      if (studentData == null) {
-        _errorMessage = "Attendance Denied: ID $studentId is not registered.";
-        notifyListeners();
-        return false;
-      }
-
-      // 2. Get GPS Location
+      // 1. Get GPS Location
       String currentLoc = "Unknown Location";
       try {
         currentLoc = await LocationService.getCurrentLocation();
       } catch (locError) {
-        currentLoc = "GPS/Location Services Disabled";
+        currentLoc = "GPS Disabled";
       }
       
-      // 3. Generate Timestamp
+      // 2. Generate Timestamp
       final String timestamp = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
-      // 4. Create the record object
-      // We use studentData['name'] to ensure the logged name is the one registered in DB
+      // 3. Create record
       final newRecord = Student(
-        name: studentData['name'] ?? name, 
+        name: name, 
         studentId: studentId.trim(),
-        password: "", // Security: Do not store passwords in logs
+        password: "", 
         timestamp: timestamp,
         location: currentLoc,
       );
 
-      // 5. Save the record to the 'attendance' table
+      // 4. Save to SQLite
       await DatabaseHelper.instance.insertAttendance(newRecord);
       
-      // 6. Refresh the local list for the History Screen
+      // 5. HYBRID SYNC: Push to Firebase Firestore (Optional logic here)
+      // await DatabaseHelper.instance.syncToCloud(newRecord); 
+      
       await loadAttendance();
       return true;
 
     } catch (e) {
-      _errorMessage = "System Error: ${e.toString()}";
+      _errorMessage = "Database Error: ${e.toString()}";
       notifyListeners();
       return false;
     }
   }
 
-  /// Register a new student into the system
   Future<void> registerNewStudent(String name, String id, String pass, List<double>? faceEmbedding) async {
     try {
       _errorMessage = "";
       await DatabaseHelper.instance.registerStudent(name, id, pass, faceEmbedding);
       notifyListeners(); 
     } catch (e) {
-      // Handle the UNIQUE constraint error if the ID already exists
       if (e.toString().contains("UNIQUE constraint failed")) {
         _errorMessage = "Registration Error: ID $id is already in use!";
       } else {

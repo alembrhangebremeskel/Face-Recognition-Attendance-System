@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../viewmodels/attendance_viewmodel.dart';
 
 class CameraScreen extends StatefulWidget {
-  // Receive the ID that was already verified on the previous screen
   final String verifiedStudentId;
 
   const CameraScreen({super.key, required this.verifiedStudentId});
@@ -30,7 +29,6 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     try {
       _availableCameras = await availableCameras();
       if (_availableCameras.isNotEmpty) {
-        // Automatically select the front camera for face scanning
         int frontIndex = _availableCameras.indexWhere(
           (cam) => cam.lensDirection == CameraLensDirection.front
         );
@@ -46,7 +44,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
     _controller = CameraController(
       cameraDescription,
-      ResolutionPreset.low,
+      ResolutionPreset.medium, // Increased for better face recognition accuracy
       enableAudio: false,
     );
 
@@ -58,36 +56,35 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     }
   }
 
-  /// DIRECT ACTION: Marks attendance using the ID passed from Identity Screen
+  /// THE SECURITY GATE: Compares face and marks attendance
   Future<void> _handleAttendanceMarking() async {
     setState(() => _isProcessing = true);
 
     try {
       final viewModel = context.read<AttendanceViewModel>();
 
-      // Call the mark attendance logic directly using the verified ID
+      // 1. Capture the "Live" frame from the camera
+      // Note: In a production TFLite app, you would pass the actual image bytes here.
+      // For your current setup, we are calling the verification logic.
       bool success = await viewModel.verifyFaceAndMarkAttendance(
-        name: "Verified Student", // The ViewModel will pull the real name from DB
         studentId: widget.verifiedStudentId,
+        liveEmbedding: [0.1, 0.2, 0.3], // Replace with actual TFLite output
       );
 
       if (mounted) {
         if (success) {
+          // SUCCESS: Show green confirmation
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text("Attendance Marked Successfully!"),
-              backgroundColor: Colors.teal,
+              backgroundColor: Color(0xFF00796B),
             ),
           );
-          // Return to the main home screen
+          // Return to home screen
           Navigator.of(context).popUntil((route) => route.isFirst);
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(viewModel.errorMessage),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
+          // FAILURE: Show the Security Alert Dialog (The "Stop" Logic)
+          _showSecurityAlert(viewModel.errorMessage);
           setState(() => _isProcessing = false);
         }
       }
@@ -95,6 +92,38 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       debugPrint("System Error: $e");
       if (mounted) setState(() => _isProcessing = false);
     }
+  }
+
+  /// EXCLUSIVE: Security Alert Dialog for Identity Mismatch
+  void _showSecurityAlert(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Row(
+          children: [
+            Icon(Icons.gpp_bad_outlined, color: Colors.red, size: 28),
+            SizedBox(width: 10),
+            Text("Security Alert", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(fontSize: 16),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00796B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("TRY AGAIN", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -107,21 +136,39 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text("Face Scan"),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        title: const Text("Face Recognition Scan"),
+        backgroundColor: const Color(0xFF00796B),
+        foregroundColor: Colors.white,
         elevation: 0,
       ),
       body: Stack(
         children: [
-          // Camera Preview
+          // 1. Camera Preview
           if (_isCameraInitialized && _controller != null)
-            SizedBox.expand(child: CameraPreview(_controller!))
+            Center(
+              child: AspectRatio(
+                aspectRatio: 1 / _controller!.value.aspectRatio,
+                child: CameraPreview(_controller!),
+              ),
+            )
           else
-            const Center(child: CircularProgressIndicator()),
+            const Center(child: CircularProgressIndicator(color: Colors.white)),
 
-          // Verified ID Indicator (Top)
+          // 2. Face Guide Overlay (Visual Polish for IT Projects)
+          Center(
+            child: Container(
+              width: 280,
+              height: 280,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.tealAccent, width: 2),
+                borderRadius: BorderRadius.circular(150),
+              ),
+            ),
+          ),
+
+          // 3. Status Indicator
           Align(
             alignment: Alignment.topCenter,
             child: Container(
@@ -132,36 +179,36 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                "Scanning for ID: ${widget.verifiedStudentId}",
+                "ID: ${widget.verifiedStudentId} (Verifying...)",
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ),
           ),
 
-          // Action Button (Bottom)
+          // 4. Verification Button
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: const EdgeInsets.all(40.0),
               child: SizedBox(
                 width: 250,
-                height: 55,
-                child: ElevatedButton(
+                height: 60,
+                child: ElevatedButton.icon(
+                  icon: _isProcessing 
+                      ? const SizedBox.shrink() 
+                      : const Icon(Icons.face, color: Colors.white),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal,
+                    backgroundColor: const Color(0xFF00796B),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    elevation: 5,
                   ),
                   onPressed: (_isCameraInitialized && !_isProcessing) 
                       ? _handleAttendanceMarking 
                       : null,
-                  child: _isProcessing
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
+                  label: _isProcessing
+                      ? const CircularProgressIndicator(color: Colors.white)
                       : const Text(
-                          "MARK ATTENDANCE",
+                          "VERIFY & MARK",
                           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                 ),

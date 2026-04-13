@@ -1,7 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/student_model.dart';
-import 'dart:convert'; 
+import 'dart:convert';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -21,32 +21,34 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2, 
+      version: 3, // Incremented version to 3 for the Hybrid update
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
   }
 
   Future _createDB(Database db, int version) async {
-    // Student Registration Table
+    // Student Registration Table (Added is_synced)
     await db.execute('''
       CREATE TABLE students (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         studentId TEXT NOT NULL UNIQUE,
         password TEXT NOT NULL,
-        face_data TEXT 
+        face_data TEXT,
+        is_synced INTEGER DEFAULT 0 
       )
     ''');
 
-    // Attendance Logs Table
+    // Attendance Logs Table (Added is_synced)
     await db.execute('''
       CREATE TABLE attendance (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         studentId TEXT NOT NULL,
         timestamp TEXT NOT NULL,
-        location TEXT NOT NULL
+        location TEXT NOT NULL,
+        is_synced INTEGER DEFAULT 0 
       )
     ''');
   }
@@ -55,6 +57,30 @@ class DatabaseHelper {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE students ADD COLUMN face_data TEXT');
     }
+    // New Migration for Hybrid Sync (Version 3)
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE students ADD COLUMN is_synced INTEGER DEFAULT 0');
+      await db.execute('ALTER TABLE attendance ADD COLUMN is_synced INTEGER DEFAULT 0');
+    }
+  }
+
+  // --- Hybrid Sync Helpers ---
+
+  /// Fetches all attendance records that haven't been pushed to Firebase yet
+  Future<List<Map<String, dynamic>>> getUnsyncedAttendance() async {
+    final db = await instance.database;
+    return await db.query('attendance', where: 'is_synced = 0');
+  }
+
+  /// Marks a specific attendance record as synced
+  Future<int> markAttendanceAsSynced(int id) async {
+    final db = await instance.database;
+    return await db.update(
+      'attendance',
+      {'is_synced': 1},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // --- Student Registration ---
@@ -72,35 +98,27 @@ class DatabaseHelper {
     return await db.insert('students', {
       'name': name.trim(),
       'studentId': studentId.trim(),
-      'password': password, // Ideally, use a hash here for production
+      'password': password,
       'face_data': faceDataJson,
+      'is_synced': 0, // Mark for cloud sync
     });
   }
 
-  // --- STEP 3 UPDATE: Strict Password & ID Matching ---
-  /// This method strictly checks if a row exists with BOTH matching ID and Password.
   Future<bool> verifyPassword(String studentId, String providedPassword) async {
     final db = await instance.database;
-    
-    // We query the 'students' table. 
-    // The 'AND' operator ensures both conditions must be true for the SAME row.
     final List<Map<String, dynamic>> maps = await db.query(
       'students',
       where: 'studentId = ? AND password = ?',
       whereArgs: [studentId.trim(), providedPassword],
     );
-    
-    // Returns true ONLY if exactly one matching record is found.
-    // If ID is wrong OR Password is wrong, maps.length will be 0.
-    return maps.length == 1; 
+    return maps.length == 1;
   }
 
-  // --- Attendance Logic (Ensures Data Integrity) ---
+  // --- Attendance Logic ---
   Future<int> insertAttendance(Student student) async {
     final db = await instance.database;
     final String cleanId = student.studentId.trim();
 
-    // 1. Fetch official record to verify existence and grab the registered name
     final List<Map<String, dynamic>> registeredStudent = await db.query(
       'students',
       where: 'studentId = ?',
@@ -108,37 +126,35 @@ class DatabaseHelper {
     );
 
     if (registeredStudent.isEmpty) {
-      throw Exception("Access Denied: ID $cleanId is not registered in the system.");
+      throw Exception("Access Denied: ID $cleanId is not registered.");
     }
 
-    // 2. Extract official name to ensure the attendance log uses the registered identity
     final String officialName = registeredStudent.first['name'] as String;
 
     final row = {
-      'name': officialName, 
+      'name': officialName,
       'studentId': cleanId,
       'timestamp': student.timestamp,
       'location': student.location,
+      'is_synced': 0, // New records start as unsynced
     };
-    
+
     return await db.insert('attendance', row);
   }
-
-  // --- Helper Methods ---
 
   Future<List<Student>> getAllAttendance() async {
     final db = await instance.database;
     final List<Map<String, dynamic>> result = await db.query(
-      'attendance', 
+      'attendance',
       orderBy: 'timestamp DESC'
     );
-    
+
     return List.generate(result.length, (i) {
       return Student(
         id: result[i]['id'] as int?,
         name: result[i]['name'] as String,
         studentId: result[i]['studentId'] as String,
-        password: "", 
+        password: "",
         timestamp: result[i]['timestamp'] as String,
         location: result[i]['location'] as String,
       );
@@ -157,7 +173,6 @@ class DatabaseHelper {
       where: 'studentId = ?',
       whereArgs: [studentId.trim()],
     );
-    
     return results.isNotEmpty ? results.first : null;
   }
 }

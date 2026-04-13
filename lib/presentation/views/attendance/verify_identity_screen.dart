@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../viewmodels/attendance_viewmodel.dart';
-import 'camera_screen.dart'; // Ensure this points to your CameraScreen file
+import 'camera_screen.dart'; 
 
 class VerifyIdentityScreen extends StatefulWidget {
   const VerifyIdentityScreen({super.key});
@@ -11,7 +11,6 @@ class VerifyIdentityScreen extends StatefulWidget {
 }
 
 class _VerifyIdentityScreenState extends State<VerifyIdentityScreen> {
-  // 1. Controllers to capture the input from the text fields
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
   bool _isLoading = false;
@@ -23,13 +22,11 @@ class _VerifyIdentityScreenState extends State<VerifyIdentityScreen> {
     super.dispose();
   }
 
-  /// THE GATEKEEPER LOGIC
-  /// This runs when the user clicks "PROCEED TO FACE SCAN"
+  /// THE GATEKEEPER LOGIC (ID & Password Phase)
   Future<void> _handleProceed() async {
     final String studentId = _idController.text.trim();
     final String password = _passController.text;
 
-    // Basic check for empty fields
     if (studentId.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please enter both ID and Password")),
@@ -41,15 +38,13 @@ class _VerifyIdentityScreenState extends State<VerifyIdentityScreen> {
 
     try {
       final viewModel = context.read<AttendanceViewModel>();
-
-      // 2. DATABASE CHECK: We check the registration BEFORE opening the camera
       bool isAuthorized = await viewModel.verifyCredentials(studentId, password);
 
       if (mounted) {
         setState(() => _isLoading = false);
 
         if (isAuthorized) {
-          // 3. SUCCESS: Move to the camera and pass the verified ID
+          // SUCCESS: Move to the camera screen for the Face Scan phase
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -57,32 +52,46 @@ class _VerifyIdentityScreenState extends State<VerifyIdentityScreen> {
             ),
           );
         } else {
-          // 4. FAILURE: Show error and stop the user here
-          _showErrorDialog(viewModel.errorMessage);
+          // FAILURE: Show the Security Alert for invalid credentials
+          _showSecurityAlertDialog(viewModel.errorMessage);
         }
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
-      _showErrorDialog("System Error: $e");
+      _showSecurityAlertDialog("System Error: $e");
     }
   }
 
-  void _showErrorDialog(String message) {
+  /// THE "STOP" LOGIC: The Security Alert Dialog
+  /// You can use this same logic in your CameraScreen if the face doesn't match!
+  void _showSecurityAlertDialog(String message) {
     showDialog(
       context: context,
+      barrierDismissible: false, // Prevents closing by clicking outside
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: const Row(
           children: [
-            Icon(Icons.lock_outline, color: Colors.red),
+            Icon(Icons.gpp_bad_outlined, color: Colors.red, size: 28),
             SizedBox(width: 10),
-            Text("Access Denied"),
+            Text(
+              "Security Alert", 
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
+            ),
           ],
         ),
-        content: Text(message),
+        content: Text(
+          message,
+          style: const TextStyle(fontSize: 16),
+        ),
         actions: [
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00796B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("OK"),
+            child: const Text("TRY AGAIN", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -96,43 +105,59 @@ class _VerifyIdentityScreenState extends State<VerifyIdentityScreen> {
         title: const Text("Verify Identity"),
         backgroundColor: const Color(0xFF00796B),
         foregroundColor: Colors.white,
+        elevation: 0,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            const Icon(Icons.shield, size: 80, color: Color(0xFF00796B)),
-            const SizedBox(height: 24),
+            // UPDATED: Professional Scanner Icon instead of generic shield
+            const Icon(
+              Icons.camera_front_outlined, 
+              size: 100, 
+              color: Color(0xFF00796B)
+            ),
+            const SizedBox(height: 20),
             const Text(
-              "Identity Verification",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              "Identity Check",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Step 1: Authenticate Credentials",
+              style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 30),
 
-            // ID Field
             TextField(
               controller: _idController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: "Student ID",
-                prefixIcon: Icon(Icons.badge),
-                border: OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.badge_outlined, color: Color(0xFF00796B)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF00796B), width: 2),
+                ),
               ),
             ),
             const SizedBox(height: 20),
 
-            // Password Field
             TextField(
               controller: _passController,
               obscureText: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: "Password",
-                prefixIcon: Icon(Icons.lock),
-                border: OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF00796B)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF00796B), width: 2),
+                ),
               ),
             ),
             const SizedBox(height: 40),
 
-            // PROCEED BUTTON
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -140,13 +165,19 @@ class _VerifyIdentityScreenState extends State<VerifyIdentityScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF00796B),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 2,
                 ),
                 onPressed: _isLoading ? null : _handleProceed,
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
                         "PROCEED TO FACE SCAN",
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: Colors.white, 
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          letterSpacing: 1.1,
+                        ),
                       ),
               ),
             ),

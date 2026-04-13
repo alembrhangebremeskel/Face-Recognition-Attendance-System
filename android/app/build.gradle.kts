@@ -2,6 +2,8 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
+    // Links your google-services.json for Cloud/Hybrid sync
+    id("com.google.gms.google-services") 
 }
 
 android {
@@ -19,10 +21,9 @@ android {
     }
 
     defaultConfig {
-        // Unique ID for your MIT 4th-year project
         applicationId = "com.example.attendance_app"
         
-        // FIXED: Set to 26 as required by tflite_flutter
+        // Required for tflite_flutter and Face Recognition
         minSdk = 26 
         
         targetSdk = flutter.targetSdkVersion
@@ -30,7 +31,8 @@ android {
         versionName = flutter.versionName
     }
 
-    // CRITICAL: Prevents TFLite model compression so the app can read it
+    // Ensures your face recognition model files aren't compressed
+    @Suppress("UnstableApiUsage")
     androidResources {
         noCompress.add("tflite")
         noCompress.add("lite")
@@ -38,10 +40,22 @@ android {
 
     buildTypes {
         getByName("release") {
-            // Signing with debug keys so 'flutter run' works on your TECNO CD7
+            // Allows testing release builds on your Tecno CD7 using debug keys
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    // Firebase BoM (Bill of Materials)
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
+
+    // Hybrid Cloud Integration
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-firestore")
+
+    // UPDATED: Set to 2.2.20 to match the root file and system classpath
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.20")
 }
 
 flutter {

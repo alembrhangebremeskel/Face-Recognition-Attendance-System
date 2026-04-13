@@ -1,3 +1,15 @@
+plugins {
+    // Let Flutter/Gradle manage the Android versions automatically
+    id("com.android.application") apply false
+    id("com.android.library") apply false
+    
+    // UPDATED: Set to 2.2.20 to match your system's classpath
+    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    
+    // Essential for your Firebase cloud synchronization
+    id("com.google.gms.google-services") version "4.4.1" apply false
+}
+
 allprojects {
     repositories {
         google()
