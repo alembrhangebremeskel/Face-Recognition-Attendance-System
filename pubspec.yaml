@@ -11,26 +11,27 @@ dependencies:
     sdk: flutter
   
   # --- UI & State Management ---
-  # Using provider for AttendanceViewModel access
   provider: ^6.1.1
-  cupertino_icons: ^1.0.6
+  cupertino_icons: ^1.0.8
   intl: ^0.19.0
 
+  # --- Firebase & Real-time Database ---
+  firebase_core: ^3.15.2
+  cloud_firestore: ^5.6.12
+
   # --- AI & Image Processing ---
-  # Core for face recognition logic
-  camera: ^0.11.0
-  google_mlkit_face_detection: ^0.13.0
-  tflite_flutter: ^0.10.0
+  camera: ^0.11.4
+  google_mlkit_face_detection: ^0.13.2
+  # Stable version for MobileFaceNet
+  tflite_flutter: ^0.10.4
   image: ^4.1.3
 
   # --- Sensors & Location ---
-  # Essential for "Geofencing" (Ensuring user is at the location)
   geolocator: ^12.0.0
   geocoding: ^3.0.0
-  permission_handler: ^11.3.1
+  permission_handler: ^11.4.0
 
   # --- Data Persistence ---
-  # SQLite for the hybrid-database implementation
   sqflite: ^2.3.0
   path_provider: ^2.1.0
   path: ^1.9.0
@@ -46,7 +47,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   
-  # CRITICAL: Ensure these folders actually exist in your project root
   assets:
+    # Including the folder ensures all images/models are found
     - assets/
-    - assets/mobile_face_net.tflite
+    # Specific declaration to ensure the TFLite file is indexed correctly
+    - assets/mobilefacenet.tflite

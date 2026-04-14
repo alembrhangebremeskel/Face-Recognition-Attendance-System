@@ -1,32 +1,39 @@
-import 'dart:convert';
-import 'dart:math'; 
+import 'dart:math';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../data/database/database_helper.dart';
 import '../../data/models/student_model.dart';
 import '../../data/services/location_service.dart';
 
 class AttendanceViewModel extends ChangeNotifier {
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  
   List<Student> _records = [];
   String _errorMessage = ""; 
-  
-  // --- NEW: Loading State ---
   bool _isLoading = false;
 
   List<Student> get records => _records;
   String get errorMessage => _errorMessage;
-  
-  // --- NEW: Loading Getter ---
   bool get isLoading => _isLoading;
 
   AttendanceViewModel() {
     loadAttendance();
   }
 
-  // Helper to toggle loading state
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
+  }
+
+  /// Helper to normalize embeddings (Reduces distance errors)
+  List<double> _normalize(List<double> embedding) {
+    double sum = 0;
+    for (var v in embedding) sum += v * v;
+    double magnitude = sqrt(sum);
+    if (magnitude == 0) return embedding;
+    return embedding.map((v) => v / magnitude).toList();
   }
 
   Future<void> loadAttendance() async {
@@ -35,72 +42,93 @@ class AttendanceViewModel extends ChangeNotifier {
       _records = List.from(data);
       notifyListeners(); 
     } catch (e) {
-      debugPrint("Error loading attendance: $e");
+      debugPrint("Error loading local attendance: $e");
     }
   }
 
-  /// --- THE GATEKEEPER: PASSWORD VERIFICATION ---
   Future<bool> verifyCredentials(String studentId, String password) async {
-    _setLoading(true); // Start loading
+    _setLoading(true);
     try {
       _errorMessage = "";
       bool isValid = await DatabaseHelper.instance.verifyPassword(studentId, password);
       
+      _setLoading(false);
       if (!isValid) {
-        _errorMessage = "Invalid ID or Password. Access Denied.";
-        _setLoading(false);
+        _errorMessage = "Invalid ID or Password.";
         return false;
       }
-      _setLoading(false);
       return true;
     } catch (e) {
-      _errorMessage = "Verification System Error: ${e.toString()}";
+      _errorMessage = "Verification Error: ${e.toString()}";
       _setLoading(false);
       return false;
     }
   }
 
-  /// --- STEP 3: TRUE FACE RECOGNITION LOGIC ---
+  /// --- STEP 2: PROFESSIONAL FACE VERIFICATION (UPDATED THRESHOLD) ---
   Future<bool> verifyFaceAndMarkAttendance({
     required String studentId,
     required List<double> liveEmbedding,
   }) async {
-    _setLoading(true); // Start loading while processing face/location
+    _setLoading(true);
     try {
       _errorMessage = ""; 
+
+      var studentDoc = await _firestore
+          .collection('students')
+          .doc(studentId)
+          .get()
+          .timeout(const Duration(seconds: 10));
       
-      final studentData = await DatabaseHelper.instance.getStudentForVerification(studentId);
-      
-      if (studentData == null) {
-        _errorMessage = "Security Alert: ID $studentId not found.";
+      if (!studentDoc.exists) {
+        _errorMessage = "Identity not found in Cloud Database.";
         _setLoading(false);
         return false;
       }
 
-      List<double> registeredEmbedding = List<double>.from(
-        jsonDecode(studentData['face_data'])
-      );
+      List<dynamic> savedData = studentDoc.data()?['face_embedding'] ?? [];
+      if (savedData.isEmpty) {
+        _errorMessage = "No face data found for this student.";
+        _setLoading(false);
+        return false;
+      }
+      
+      // CRITICAL FIX: The Type Mismatch Fix
+      List<double> registeredEmbedding = savedData.map((e) => double.parse(e.toString())).toList();
 
-      // MATH: Calculate Euclidean Distance
+      // Normalize both for better accuracy across different lighting conditions
+      List<double> normLive = _normalize(liveEmbedding);
+      List<double> normSaved = _normalize(registeredEmbedding);
+
+      // 3. MATH: Calculate Euclidean Distance
       double distance = 0;
-      for (int i = 0; i < liveEmbedding.length; i++) {
-        distance += pow((liveEmbedding[i] - registeredEmbedding[i]), 2);
+      for (int i = 0; i < normLive.length; i++) {
+        distance += pow((normLive[i] - normSaved[i]), 2);
       }
       distance = sqrt(distance);
 
-      debugPrint("Final Face Distance for $studentId: $distance");
+      debugPrint("📊 Final Calculated Distance for $studentId: $distance");
 
-      if (distance < 0.6) {
-        // MATCH: markAttendance handles the location search
-        bool result = await markAttendance(studentData['name'], studentId);
-        _setLoading(false); // Done
+      // 4. Threshold Check (MODIFIED)
+      // Your previous value was 0.75. 
+      // Based on your tests, 1.10 is the "Sweet Spot" for your device.
+      const double recognitionThreshold = 1.10;
+
+      if (distance < recognitionThreshold) {
+        bool result = await markAttendance(studentDoc.data()?['name'] ?? "Unknown", studentId);
+        _setLoading(false);
         return result;
       } else {
-        _errorMessage = "Security Alert: Face does not match profile!";
+        // We show the distance in the error message to help you calibrate
+        _errorMessage = "Face not recognized (Distance: ${distance.toStringAsFixed(2)})";
         _setLoading(false);
         return false;
       }
       
+    } on TimeoutException {
+      _errorMessage = "Cloud connection timeout. Check internet.";
+      _setLoading(false);
+      return false;
     } catch (e) {
       _errorMessage = "Recognition Error: ${e.toString()}";
       _setLoading(false);
@@ -108,21 +136,17 @@ class AttendanceViewModel extends ChangeNotifier {
     }
   }
 
-  /// Final Step: Saving the Attendance Record
   Future<bool> markAttendance(String name, String studentId) async {
     try {
-      _errorMessage = "";
-
-      // 1. Get GPS Location (This uses your Deep Scan logic)
       String currentLoc = "Unknown Location";
       try {
-        // This part takes time, so the UI will show the spinner
         currentLoc = await LocationService.getCurrentLocation();
-      } catch (locError) {
+      } catch (e) {
         currentLoc = "GPS Disabled";
       }
       
-      final String timestamp = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+      final DateTime now = DateTime.now();
+      final String timestamp = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
 
       final newRecord = Student(
         name: name, 
@@ -131,8 +155,17 @@ class AttendanceViewModel extends ChangeNotifier {
         timestamp: timestamp,
         location: currentLoc,
       );
-
+      
       await DatabaseHelper.instance.insertAttendance(newRecord);
+
+      _firestore.collection('attendance_logs').add({
+        'student_id': studentId,
+        'student_name': name,
+        'timestamp': FieldValue.serverTimestamp(),
+        'location': currentLoc,
+        'status': 'Present',
+      }).catchError((e) => debugPrint("Background Sync Failed: $e"));
+
       await loadAttendance();
       return true;
 
@@ -145,18 +178,30 @@ class AttendanceViewModel extends ChangeNotifier {
 
   Future<void> registerNewStudent(String name, String id, String pass, List<double>? faceEmbedding) async {
     _setLoading(true);
+    _errorMessage = "";
+    
     try {
-      _errorMessage = "";
-      await DatabaseHelper.instance.registerStudent(name, id, pass, faceEmbedding);
-      _setLoading(false);
-    } catch (e) {
-      if (e.toString().contains("UNIQUE constraint failed")) {
-        _errorMessage = "Registration Error: ID $id already exists!";
-      } else {
-        _errorMessage = "Registration Error: ${e.toString()}";
+      // Normalize before saving to ensure data consistency
+      List<double>? normalizedEmbedding = faceEmbedding != null ? _normalize(faceEmbedding) : null;
+
+      await DatabaseHelper.instance.registerStudent(name, id, pass, normalizedEmbedding);
+
+      try {
+        await _firestore.collection('students').doc(id).set({
+          'name': name,
+          'student_id': id,
+          'face_embedding': normalizedEmbedding, 
+          'created_at': FieldValue.serverTimestamp(),
+        }).timeout(const Duration(seconds: 12));
+      } catch (cloudError) {
+        debugPrint("Cloud Registration Error: $cloudError");
       }
+
+    } on Exception catch (e) {
+      _errorMessage = e.toString().replaceAll("Exception: ", "");
+      rethrow; 
+    } finally {
       _setLoading(false);
-      throw Exception(_errorMessage);
     }
   }
 }

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-// IMPORTANT: Replace 'attendance_app' with the 'name' from your pubspec.yaml file
-import 'package:attendance_app/presentation/viewmodels/attendance_viewmodel.dart';
+import '../viewmodels/attendance_viewmodel.dart'; // Ensure path matches
 import 'camera_screen.dart'; 
 
 class LoginAttendanceScreen extends StatefulWidget {
@@ -23,27 +21,30 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
     super.dispose();
   }
 
+  /// Validates credentials before opening the camera
   Future<void> _handleVerification() async {
     final String id = _idController.text.trim();
     final String pass = _passController.text;
 
     if (id.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter both ID and Password")),
+        const SnackBar(
+          content: Text("Please enter both ID and Password"),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
 
     try {
-      // Accessing the ViewModel via Provider
       final viewModel = context.read<AttendanceViewModel>();
       
-      // The ViewModel now handles the 'isLoading' state internally
+      // Step 1: Verify Credentials (SQLite or Firestore)
       bool isAuthorized = await viewModel.verifyCredentials(id, pass);
 
       if (mounted) {
         if (isAuthorized) {
-          // Success: Navigate to Face Scan
+          // Success: Pass the ID to the Camera Screen for Face Recognition (Step 2)
           Navigator.push(
             context, 
             MaterialPageRoute(
@@ -51,43 +52,39 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
             ),
           );
         } else {
-          // Failure: Show the Security Alert using the error from ViewModel
-          _showSecurityAlertDialog(viewModel.errorMessage);
+          _showSecurityAlertDialog(viewModel.errorMessage.isNotEmpty 
+              ? viewModel.errorMessage 
+              : "Invalid Credentials. Access Denied.");
         }
       }
     } catch (e) {
       if (mounted) {
-        _showSecurityAlertDialog("System Error: ${e.toString()}");
+        _showSecurityAlertDialog("Connection Error: Please check your network.");
       }
     }
   }
 
-  /// THE "STOP" LOGIC: Specialized Security Alert Dialog
   void _showSecurityAlertDialog(String message) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
-            Icon(Icons.gpp_bad_outlined, color: Colors.red, size: 28),
-            SizedBox(width: 10),
+            Icon(Icons.security_update_warning_rounded, color: Colors.red, size: 30),
+            SizedBox(width: 12),
             Text(
-              "Security Alert", 
+              "Access Denied", 
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
             ),
           ],
         ),
         content: Text(message, style: const TextStyle(fontSize: 16)),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00796B),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
+          TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("OK", style: TextStyle(color: Colors.white)),
+            child: const Text("TRY AGAIN", style: TextStyle(color: Color(0xFF00796B), fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -96,108 +93,131 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch the viewModel for changes in 'isLoading'
     final viewModel = context.watch<AttendanceViewModel>();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Verify Identity"), 
+        title: const Text("MIT Attendance System", style: TextStyle(color: Colors.white)), 
         backgroundColor: const Color(0xFF00796B),
-        foregroundColor: Colors.white,
+        centerTitle: true,
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            const SizedBox(height: 30),
-            
-            /// POLISHED: Modern Face Scanner Icon for your IT Project
-            const Icon(
-              Icons.face_retouching_natural_rounded, 
-              size: 100, 
-              color: Color(0xFF00796B)
-            ),
-            
-            const SizedBox(height: 20),
-            const Text(
-              "Identity Authentication",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "Step 1: Enter Registered Credentials",
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            const SizedBox(height: 35),
-
-            /// ID Input
-            TextField(
-              controller: _idController, 
-              enabled: !viewModel.isLoading, // Disable input while loading
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.badge_outlined, color: Color(0xFF00796B)),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), 
-                labelText: "Student ID",
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF00796B), width: 2),
-                ),
+      body: Container(
+        height: MediaQuery.of(context).size.height,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [const Color(0xFF00796B).withOpacity(0.1), Colors.white],
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 30.0),
+          child: Column(
+            children: [
+              const SizedBox(height: 40),
+              
+              const Icon(
+                Icons.account_circle_rounded, 
+                size: 100, 
+                color: Color(0xFF00796B)
               ),
-            ),
-            const SizedBox(height: 20),
+              
+              const SizedBox(height: 20),
+              const Text(
+                "Authentication",
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF002420)),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "Step 1: Verify your account to proceed",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.blueGrey, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 40),
 
-            /// Password Input
-            TextField(
-              controller: _passController, 
-              obscureText: true,
-              enabled: !viewModel.isLoading, // Disable input while loading
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.lock_person_outlined, color: Color(0xFF00796B)),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), 
-                labelText: "Password",
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF00796B), width: 2),
-                ),
-              ), 
-            ),
-            
-            const SizedBox(height: 45),
-            
-            /// PROCEED BUTTON
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00796B), 
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 2,
-                ),
-                // Button is disabled if isLoading is true
-                onPressed: viewModel.isLoading ? null : _handleVerification,
-                child: viewModel.isLoading 
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white, 
-                        strokeWidth: 3,
+              _buildInputField(
+                controller: _idController,
+                label: "Student ID",
+                icon: Icons.badge_rounded,
+                isLoading: viewModel.isLoading,
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 20),
+
+              _buildInputField(
+                controller: _passController,
+                label: "Account Password",
+                icon: Icons.vpn_key_rounded,
+                isPassword: true,
+                isLoading: viewModel.isLoading,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _handleVerification(),
+              ),
+              
+              const SizedBox(height: 45),
+              
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00796B), 
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    elevation: 4,
+                  ),
+                  onPressed: viewModel.isLoading ? null : _handleVerification,
+                  child: viewModel.isLoading 
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        "NEXT: SCAN FACE", 
+                        style: TextStyle(
+                          color: Colors.white, 
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          letterSpacing: 1.1
+                        )
                       ),
-                    )
-                  : const Text(
-                      "PROCEED TO FACE SCAN", 
-                      style: TextStyle(
-                        color: Colors.white, 
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        letterSpacing: 1.2
-                      )
-                    ),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool isPassword = false,
+    required bool isLoading,
+    TextInputAction? textInputAction,
+    Function(String)? onSubmitted,
+  }) {
+    return TextField(
+      controller: controller, 
+      obscureText: isPassword,
+      enabled: !isLoading,
+      textInputAction: textInputAction,
+      onSubmitted: onSubmitted,
+      decoration: InputDecoration(
+        prefixIcon: Icon(icon, color: const Color(0xFF00796B)),
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.blueGrey),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Color(0xFF00796B), width: 2),
         ),
       ),
     );
