@@ -29,6 +29,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     // Ensures your face recognition model files aren't compressed
@@ -40,7 +41,16 @@ android {
 
     buildTypes {
         getByName("release") {
-            // Allows testing release builds on your Tecno CD7 using debug keys
+            // UPDATED: Set to false to prevent R8 from deleting AI/ML classes
+            isMinifyEnabled = false
+            isShrinkResources = false
+            
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+
+            // Allows testing release builds using debug keys
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -54,8 +64,8 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-firestore")
 
-    // UPDATED: Set to 2.2.20 to match the root file and system classpath
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.20")
+    // Set to match the root file and system classpath
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.0.20")
 }
 
 flutter {
