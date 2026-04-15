@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../viewmodels/attendance_viewmodel.dart'; // Ensure path matches
+import '../viewmodels/attendance_viewmodel.dart'; 
 import 'camera_screen.dart'; 
 
 class LoginAttendanceScreen extends StatefulWidget {
@@ -23,10 +23,10 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
 
   /// Validates credentials before opening the camera
   Future<void> _handleVerification() async {
-    final String id = _idController.text.trim();
+    final String rawId = _idController.text.trim();
     final String pass = _passController.text;
 
-    if (id.isEmpty || pass.isEmpty) {
+    if (rawId.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Please enter both ID and Password"),
@@ -39,22 +39,27 @@ class _LoginAttendanceScreenState extends State<LoginAttendanceScreen> {
     try {
       final viewModel = context.read<AttendanceViewModel>();
       
-      // Step 1: Verify Credentials (SQLite or Firestore)
-      bool isAuthorized = await viewModel.verifyCredentials(id, pass);
+      // FIX: Sanitize the ID IMMEDIATELY. 
+      // Since registration now saves IDs as 'mit_ur_1007_10', 
+      // we must search for the sanitized version to match the database record.
+      final String sanitizedId = rawId.replaceAll('/', '_');
+
+      // Step 1: Verify Credentials using the sanitized ID
+      bool isAuthorized = await viewModel.verifyCredentials(sanitizedId, pass);
 
       if (mounted) {
         if (isAuthorized) {
-          // Success: Pass the ID to the Camera Screen for Face Recognition (Step 2)
+          // Success: Pass the SANITIZED ID to the Camera Screen for Face Recognition (Step 2)
           Navigator.push(
             context, 
             MaterialPageRoute(
-              builder: (_) => CameraScreen(verifiedStudentId: id),
+              builder: (_) => CameraScreen(verifiedStudentId: sanitizedId),
             ),
           );
         } else {
           _showSecurityAlertDialog(viewModel.errorMessage.isNotEmpty 
               ? viewModel.errorMessage 
-              : "Invalid Credentials. Access Denied.");
+              : "Invalid ID or Password. Access Denied.");
         }
       }
     } catch (e) {

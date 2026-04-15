@@ -46,7 +46,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> with WidgetsBin
     super.dispose();
   }
 
-  // Handle app background/foreground transitions to prevent camera freezing
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final CameraController? cameraController = _controller;
@@ -68,7 +67,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> with WidgetsBin
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
 
-      // FIX: Changed Resolution to LOW and removed explicit JPEG group to reduce frame drop on TECNO hardware
       _controller = CameraController(
         cameras[_selectedCameraIndex],
         ResolutionPreset.low, 
@@ -76,8 +74,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> with WidgetsBin
       );
 
       await _controller!.initialize();
-      
-      // FIX: Set a lower FPS to prevent the "Dropped Frames" log flood
       await _controller!.lockCaptureOrientation(); 
 
       if (mounted) {
@@ -102,11 +98,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> with WidgetsBin
     setState(() => _isProcessing = true);
     
     try {
-      // Capture the frame
       final XFile imageFile = await _controller!.takePicture();
       final inputImage = InputImage.fromFilePath(imageFile.path);
-      
-      // Detect Face
       final faces = await _faceService.detectFaces(inputImage);
 
       if (faces.isEmpty) {
@@ -120,7 +113,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> with WidgetsBin
         Face face = faces[0];
         Rect rect = face.boundingBox;
 
-        // Crop Face
         img.Image faceCrop = img.copyCrop(
           fullImg,
           x: rect.left.toInt(),
@@ -129,7 +121,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> with WidgetsBin
           height: rect.height.toInt(),
         );
 
-        // Generate Embeddings
         final embedding = _faceService.getEmbeddings(faceCrop);
         
         if (embedding.isEmpty) {
@@ -177,7 +168,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> with WidgetsBin
       
       try {
         final viewModel = Provider.of<AttendanceViewModel>(context, listen: false);
-        final studentId = _idController.text.trim();
+        
+        // FIX: Sanitize ID by replacing '/' with '_' to prevent Firestore segment errors
+        final studentId = _idController.text.trim().replaceAll('/', '_');
 
         await viewModel.registerNewStudent(
           _nameController.text.trim(),
