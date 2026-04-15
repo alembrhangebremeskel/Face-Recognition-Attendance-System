@@ -1,7 +1,8 @@
 name: attendance_app
 description: "Professional Face Recognition Attendance System for MIT"
 publish_to: 'none'
-version: 1.0.0+1
+# Incrementing version for the new Export feature
+version: 1.0.1+2
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -30,10 +31,13 @@ dependencies:
   geocoding: ^3.0.0
   permission_handler: ^11.4.0
 
-  # --- Data Persistence ---
+  # --- Data Persistence & Export ---
   sqflite: ^2.3.0
-  path_provider: ^2.1.0
+  path_provider: ^2.1.2
   path: ^1.9.0
+  # NEW: Added for Excel generation and sharing
+  excel: ^4.0.1
+  share_plus: ^7.2.1
 
   # --- Networking ---
   http: ^1.2.0
